@@ -689,7 +689,9 @@ bio_doread(struct vnode *vp, daddr_t blkno, int size, int async)
 			BIO_SETPRIO(bp, BPRIO_TIMELIMITED);
 		else
 			BIO_SETPRIO(bp, BPRIO_TIMECRITICAL);
-		VOP_STRATEGY(vp, bp);
+
+		if (vp->v_type != VBLK)
+			VOP_STRATEGY(vp, bp);
 
 		/* Pay for the read. */
 		curlwp->l_ru.ru_inblock++;
@@ -732,7 +734,10 @@ bread(struct vnode *vp, daddr_t blkno, int size, int flags, buf_t **bpp)
 		return ENOMEM;
 
 	/* Wait for the read to complete, and return result. */
-	error = biowait(bp);
+	//error = biowait(bp);
+	error = 0;
+        return 0;
+
 	if (error == 0 && (flags & B_MODIFY) != 0)
 		error = fscow_run(bp, true);
 	if (error) {
@@ -775,7 +780,10 @@ breadn(struct vnode *vp, daddr_t blkno, int size, daddr_t *rablks,
 	mutex_exit(&bufcache_lock);
 
 	/* Otherwise, we had to start a read for it; wait until it's valid. */
-	error = biowait(bp);
+	//error = biowait(bp);
+	error = 0;
+	return 0;
+
 	if (error == 0 && (flags & B_MODIFY) != 0)
 		error = fscow_run(bp, true);
 	if (error) {
@@ -1136,6 +1144,53 @@ incore(struct vnode *vp, daddr_t blkno)
 	return (NULL);
 }
 
+struct ukvm_blkinfo {
+    uint64_t capacity;       /* Capacity of block device, bytes */
+    uint64_t block_size;     /* Minimum I/O unit (block size), bytes */
+    uint8_t *diskmem;           /* Memory mapped disk */
+};
+
+#define LINUX_HYPERCALL_ADDRESS 0x10000
+enum ukvm_hypercall {
+    /* UKVM_HYPERCALL_RESERVED=0 */
+    UKVM_HYPERCALL_WALLTIME=1,
+    UKVM_HYPERCALL_PUTS,
+    UKVM_HYPERCALL_POLL,
+    UKVM_HYPERCALL_BLKINFO,
+    UKVM_HYPERCALL_BLKWRITE,
+    UKVM_HYPERCALL_BLKREAD,
+    UKVM_HYPERCALL_NETINFO,
+    UKVM_HYPERCALL_NETWRITE,
+    UKVM_HYPERCALL_NETREAD,
+    UKVM_HYPERCALL_HALT,
+    UKVM_HYPERCALL_MAX
+};
+
+static inline void ukvm_do_hypercall(int n, void *arg)
+{
+    uint64_t hcaddr = *((uint64_t *)LINUX_HYPERCALL_ADDRESS);
+    void (*_hc)(int,void *) = (void (*)(int, void *))hcaddr;
+    _hc(n, arg);
+}
+
+/*
+ * Retrieves information about the block device. Caller must supply space for
+ * struct solo5_block_info in (info).
+ */
+static uint8_t *diskmem = NULL;
+
+static uint8_t *solo5_diskmem(void)
+{
+	if (diskmem == NULL) {
+		struct ukvm_blkinfo bi;
+		ukvm_do_hypercall(UKVM_HYPERCALL_BLKINFO, &bi);
+		diskmem = (uint8_t *)bi.diskmem;
+		return (uint8_t *)bi.diskmem;
+	} else {
+		return diskmem;
+	}
+}
+
 /*
  * Get a block of requested size that is associated with
  * a given vnode and block offset. If it is found in the
@@ -1153,6 +1208,9 @@ getblk(struct vnode *vp, daddr_t blkno, int size, int slpflag, int slptimeo)
 	mutex_enter(&bufcache_lock);
  loop:
 	bp = incore(vp, blkno);
+
+        // RKJ: check that vp->v_mount is not "/"
+
 	if (bp != NULL) {
 		err = bbusy(bp, ((slpflag & PCATCH) != 0), slptimeo, NULL);
 		if (err != 0) {
@@ -1201,6 +1259,10 @@ getblk(struct vnode *vp, daddr_t blkno, int size, int slpflag, int slptimeo)
 			mutex_exit(&bufcache_lock);
 			brelse(bp, BC_INVAL);
 			return NULL;
+		}
+		if (vp->v_type == VBLK) {
+			//printf("solo5 disk mem %p\n", solo5_diskmem());
+			bp->b_data = solo5_diskmem() + (blkno * 512);
 		}
 	}
 	BIO_SETPRIO(bp, BPRIO_DEFAULT);
