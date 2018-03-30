@@ -363,6 +363,8 @@ startover:
 		if (!glocked) {
 			genfs_node_unlock(vp);
 		}
+		//printf("returning cached pages %p %s %d %p\n", vp, __FUNCTION__,
+		//	vp->v_type, (void *)origoffset);
 		UVMHIST_LOG(ubchist, "returning cached pages", 0,0,0,0);
 		npages += ridx;
 		goto out;

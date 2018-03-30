@@ -616,7 +616,7 @@ uvm_pagelookup(struct uvm_object *uobj, voff_t off)
 	bool ispagedaemon = curlwp == uvm.pagedaemon_lwp;
 
 	// rkj
-	//struct vnode *vp = (struct vnode *)uobj;
+	struct vnode *vp = (struct vnode *)uobj;
 	//if (vp->v_type == VBLK)
 	//	printf("%p %s VBLK %p\n", uobj, __FUNCTION__, (void *)off);
 	//else
@@ -628,7 +628,7 @@ uvm_pagelookup(struct uvm_object *uobj, voff_t off)
 		TAILQ_REMOVE(&vmpage_lruqueue, pg, pageq.queue);
 		TAILQ_INSERT_TAIL(&vmpage_lruqueue, pg, pageq.queue);
 		mutex_exit(&uvm_pageqlock);
-		//printf("HIT %p %s %d %p\n", uobj, __FUNCTION__, vp->v_type, (void *)off);
+		//printf("HIT %p %s %d %p\n", vp, __FUNCTION__, vp->v_type, (void *)off);
 	}
 
 	return pg;

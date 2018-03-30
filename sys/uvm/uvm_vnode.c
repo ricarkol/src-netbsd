@@ -309,7 +309,6 @@ uvn_findpage(struct uvm_object *uobj, voff_t offset, struct vm_page **pgp,
 		fs_bshift = DEV_BSHIFT;
 	}
 
-
 	for (;;) {
 		/* look for an existing page */
 		pg = uvm_pagelookup(uobj, offset);
@@ -339,17 +338,19 @@ uvn_findpage(struct uvm_object *uobj, voff_t offset, struct vm_page **pgp,
 			// rkj
 			daddr_t lbn = offset >> fs_bshift;
 			daddr_t blkno;
+			mutex_exit(uobj->vmobjlock);
 			error = VOP_BMAP(vp, lbn, &devvp, &blkno, &run);
+			mutex_enter(uobj->vmobjlock);
 			if (devvp->v_type == VBLK) {
-				//printf("%p %s VBLK %p run=%d error=%d\n", devvp, __FUNCTION__,
-				//		(void *)blkno, run, error);
 				if (blkno != 0xffffffffffffffff) { // allocated block
-					pg = uvm_pagealloc(uobj, offset, NULL,
-					    UVM_FLAG_COLORMATCH);
+				//printf("%p %s VBLK %p flags=%x run=%d error=%d\n", devvp, __FUNCTION__,
+				//		(void *)blkno, pg->flags, run, error);
 					pg->uanon = (void *) (solo5_diskmem() + (blkno * 512));
 					pg->flags = PG_CLEAN|PG_BUSY;
-					*pgp = pg;
-					return 1;
+					UVM_PAGE_OWN(pg, "uvn_findpage");
+					UVMHIST_LOG(ubchist, "found %p (color %u)",
+					    pg, VM_PGCOLOR_BUCKET(pg), 0,0);
+					break;
 				}
 				assert(error == 0);
 			}
