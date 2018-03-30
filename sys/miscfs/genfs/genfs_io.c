@@ -331,6 +331,8 @@ startover:
 		goto startover;
 	}
 
+	// rkj: look for pgs pages, this is like looking in the cache
+
 	if (uvn_findpages(uobj, origoffset, &npages, &pgs[ridx],
 	    async ? UFP_NOWAIT : UFP_ALL) != orignmempages) {
 		if (!glocked) {
@@ -346,6 +348,8 @@ startover:
 	/*
 	 * if the pages are already resident, just return them.
 	 */
+
+        // rkj: cache hit for this vnode
 
 	for (i = 0; i < npages; i++) {
 		struct vm_page *pg = pgs[ridx + i];
@@ -531,6 +535,8 @@ genfs_getpages_read(struct vnode *vp, struct vm_page **pgs, int npages,
 	tailbytes = totalbytes - bytes;
 	skipbytes = 0;
 
+	// rkj: this will allocate pages
+
 	kva = uvm_pagermapin(pgs, npages,
 	    UVMPAGER_MAPIN_READ | (async ? 0 : UVMPAGER_MAPIN_WAITOK));
 	if (kva == 0)
@@ -617,6 +623,8 @@ genfs_getpages_read(struct vnode *vp, struct vm_page **pgs, int npages,
 		 * skip the rest of the top-level i/o.
 		 */
 
+		// rkj: map vp of the file to the devvp+blkno
+
 		lbn = offset >> fs_bshift;
 		error = VOP_BMAP(vp, lbn, &devvp, &blkno, &run);
 		if (error) {
@@ -681,6 +689,8 @@ genfs_getpages_read(struct vnode *vp, struct vm_page **pgs, int npages,
 		 * (or just use mbp if there's only 1 piece),
 		 * and start it going.
 		 */
+
+		// rkj: take care of partial blocks
 
 		if (offset == startoffset && iobytes == bytes) {
 			bp = mbp;

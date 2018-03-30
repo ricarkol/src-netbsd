@@ -232,12 +232,65 @@ uvn_findpages(struct uvm_object *uobj, voff_t offset, int *npagesp,
 	return (found);
 }
 
+
+struct ukvm_blkinfo {
+    uint64_t capacity;       /* Capacity of block device, bytes */
+    uint64_t block_size;     /* Minimum I/O unit (block size), bytes */
+    uint8_t *diskmem;           /* Memory mapped disk */
+};
+
+#define LINUX_HYPERCALL_ADDRESS 0x10000
+enum ukvm_hypercall {
+    /* UKVM_HYPERCALL_RESERVED=0 */
+    UKVM_HYPERCALL_WALLTIME=1,
+    UKVM_HYPERCALL_PUTS,
+    UKVM_HYPERCALL_POLL,
+    UKVM_HYPERCALL_BLKINFO,
+    UKVM_HYPERCALL_BLKWRITE,
+    UKVM_HYPERCALL_BLKREAD,
+    UKVM_HYPERCALL_NETINFO,
+    UKVM_HYPERCALL_NETWRITE,
+    UKVM_HYPERCALL_NETREAD,
+    UKVM_HYPERCALL_HALT,
+    UKVM_HYPERCALL_MAX
+};
+
+static inline void ukvm_do_hypercall(int n, void *arg)
+{
+    uint64_t hcaddr = *((uint64_t *)LINUX_HYPERCALL_ADDRESS);
+    void (*_hc)(int,void *) = (void (*)(int, void *))hcaddr;
+    _hc(n, arg);
+}
+
+/*
+ * Retrieves information about the block device. Caller must supply space for
+ * struct solo5_block_info in (info).
+ */
+static uint8_t *diskmem = NULL;
+
+static uint8_t *solo5_diskmem(void)
+{
+	if (diskmem == NULL) {
+		struct ukvm_blkinfo bi;
+		ukvm_do_hypercall(UKVM_HYPERCALL_BLKINFO, &bi);
+		diskmem = (uint8_t *)bi.diskmem;
+		return (uint8_t *)bi.diskmem;
+	} else {
+		return diskmem;
+	}
+}
+
+
+
 static int
 uvn_findpage(struct uvm_object *uobj, voff_t offset, struct vm_page **pgp,
     int flags)
 {
+	struct vnode *devvp, *vp = (struct vnode *)uobj;
 	struct vm_page *pg;
 	bool dirty;
+	int error;
+	int fs_bshift;
 	UVMHIST_FUNC("uvn_findpage"); UVMHIST_CALLED(ubchist);
 	UVMHIST_LOG(ubchist, "vp %p off 0x%lx", uobj, offset,0,0);
 
@@ -247,12 +300,23 @@ uvn_findpage(struct uvm_object *uobj, voff_t offset, struct vm_page **pgp,
 		UVMHIST_LOG(ubchist, "dontcare", 0,0,0,0);
 		return 0;
 	}
+
+  	// rkj
+	int run;
+	if (vp->v_type != VBLK) {
+		fs_bshift = vp->v_mount->mnt_dev_bshift;
+	} else {
+		fs_bshift = DEV_BSHIFT;
+	}
+
+
 	for (;;) {
 		/* look for an existing page */
 		pg = uvm_pagelookup(uobj, offset);
 
 		/* nope?  allocate one now */
 		if (pg == NULL) {
+
 			if (flags & UFP_NOALLOC) {
 				UVMHIST_LOG(ubchist, "noalloc", 0,0,0,0);
 				return 0;
@@ -271,6 +335,26 @@ uvn_findpage(struct uvm_object *uobj, voff_t offset, struct vm_page **pgp,
 			}
 			UVMHIST_LOG(ubchist, "alloced %p (color %u)", pg,
 			    VM_PGCOLOR_BUCKET(pg), 0,0);
+
+			// rkj
+			daddr_t lbn = offset >> fs_bshift;
+			daddr_t blkno;
+			error = VOP_BMAP(vp, lbn, &devvp, &blkno, &run);
+			if (devvp->v_type == VBLK) {
+				//printf("%p %s VBLK %p run=%d error=%d\n", devvp, __FUNCTION__,
+				//		(void *)blkno, run, error);
+				if (blkno != 0xffffffffffffffff) { // allocated block
+					pg = uvm_pagealloc(uobj, offset, NULL,
+					    UVM_FLAG_COLORMATCH);
+					pg->uanon = (void *) (solo5_diskmem() + (blkno * 512));
+					pg->flags = PG_CLEAN|PG_BUSY;
+					*pgp = pg;
+					return 1;
+				}
+				assert(error == 0);
+			}
+			// rkj
+
 			break;
 		} else if (flags & UFP_NOCACHE) {
 			UVMHIST_LOG(ubchist, "nocache",0,0,0,0);

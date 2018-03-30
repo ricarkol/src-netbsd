@@ -1208,9 +1208,6 @@ getblk(struct vnode *vp, daddr_t blkno, int size, int slpflag, int slptimeo)
 	mutex_enter(&bufcache_lock);
  loop:
 	bp = incore(vp, blkno);
-
-        // RKJ: check that vp->v_mount is not "/"
-
 	if (bp != NULL) {
 		err = bbusy(bp, ((slpflag & PCATCH) != 0), slptimeo, NULL);
 		if (err != 0) {
@@ -1253,16 +1250,27 @@ getblk(struct vnode *vp, daddr_t blkno, int size, int slpflag, int slptimeo)
 	if (ISSET(bp->b_flags, B_LOCKED)) {
 		KASSERT(bp->b_bufsize >= size);
 	} else {
-		if (allocbuf(bp, size, preserve)) {
-			mutex_enter(&bufcache_lock);
-			LIST_REMOVE(bp, b_hash);
-			mutex_exit(&bufcache_lock);
-			brelse(bp, BC_INVAL);
-			return NULL;
-		}
 		if (vp->v_type == VBLK) {
+        		// RKJ: check that vp->v_mount is not "/"
+        		
 			//printf("solo5 disk mem %p\n", solo5_diskmem());
+			vsize_t desired_size;
+			bp->b_bcount = size;
+			// XXX solo5_diskmem should get a device argument
+			// right now there is only one device, so all good
 			bp->b_data = solo5_diskmem() + (blkno * 512);
+			desired_size = buf_roundsize(size);
+			if (desired_size > MAXBSIZE)
+				printf("allocbuf: buffer larger than MAXBSIZE requested");
+			bp->b_bufsize = desired_size;
+		} else {
+			if (allocbuf(bp, size, preserve)) {
+				mutex_enter(&bufcache_lock);
+				LIST_REMOVE(bp, b_hash);
+				mutex_exit(&bufcache_lock);
+				brelse(bp, BC_INVAL);
+				return NULL;
+			}
 		}
 	}
 	BIO_SETPRIO(bp, BPRIO_DEFAULT);

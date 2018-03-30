@@ -34,6 +34,8 @@
  */
 
 /*
+ * rkj: page address is pg->uanon
+ *
  * XXX: we abuse pg->uanon for the virtual address of the storage
  * for each page.  phys_addr would fit the job description better,
  * except that it will create unnecessary lossage on some platforms
@@ -503,6 +505,8 @@ uvm_pagermapin(struct vm_page **pgs, int npages, int flags)
 	vaddr_t curkva;
 	int i;
 
+	// rkj: this is where the file cache pages are allocated
+
 	/* allocate structures */
 	pgri = kmem_alloc(sizeof(*pgri), KM_SLEEP);
 	pgri->pgr_kva = (vaddr_t)kmem_alloc(npages * PAGE_SIZE, KM_SLEEP);
@@ -595,6 +599,7 @@ uvm_pageratop(vaddr_t va)
 	return pg;
 }
 
+
 /*
  * Called with the vm object locked.
  *
@@ -610,12 +615,20 @@ uvm_pagelookup(struct uvm_object *uobj, voff_t off)
 	struct vm_page *pg;
 	bool ispagedaemon = curlwp == uvm.pagedaemon_lwp;
 
+	// rkj
+	//struct vnode *vp = (struct vnode *)uobj;
+	//if (vp->v_type == VBLK)
+	//	printf("%p %s VBLK %p\n", uobj, __FUNCTION__, (void *)off);
+	//else
+	//	printf("%p %s %d %p\n", uobj, __FUNCTION__, vp->v_type, (void *)off);
+
 	pg = rb_tree_find_node(&uobj->rb_tree, &off);
 	if (pg && !UVM_OBJ_IS_AOBJ(pg->uobject) && !ispagedaemon) {
 		mutex_enter(&uvm_pageqlock);
 		TAILQ_REMOVE(&vmpage_lruqueue, pg, pageq.queue);
 		TAILQ_INSERT_TAIL(&vmpage_lruqueue, pg, pageq.queue);
 		mutex_exit(&uvm_pageqlock);
+		//printf("HIT %p %s %d %p\n", uobj, __FUNCTION__, vp->v_type, (void *)off);
 	}
 
 	return pg;
