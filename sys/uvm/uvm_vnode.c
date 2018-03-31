@@ -290,7 +290,6 @@ uvn_findpage(struct uvm_object *uobj, voff_t offset, struct vm_page **pgp,
 	struct vm_page *pg;
 	bool dirty;
 	int error;
-	int fs_bshift;
 	UVMHIST_FUNC("uvn_findpage"); UVMHIST_CALLED(ubchist);
 	UVMHIST_LOG(ubchist, "vp %p off 0x%lx", uobj, offset,0,0);
 
@@ -303,11 +302,10 @@ uvn_findpage(struct uvm_object *uobj, voff_t offset, struct vm_page **pgp,
 
   	// rkj
 	int run;
-	if (vp->v_type != VBLK) {
-		fs_bshift = vp->v_mount->mnt_dev_bshift;
-	} else {
-		fs_bshift = DEV_BSHIFT;
-	}
+	const int fs_bshift = (vp->v_type != VBLK) ?
+	    vp->v_mount->mnt_fs_bshift : DEV_BSHIFT;
+	const int dev_bshift = (vp->v_type != VBLK) ?
+	    vp->v_mount->mnt_dev_bshift : DEV_BSHIFT;
 
 	for (;;) {
 		/* look for an existing page */
@@ -341,10 +339,14 @@ uvn_findpage(struct uvm_object *uobj, voff_t offset, struct vm_page **pgp,
 			mutex_exit(uobj->vmobjlock);
 			error = VOP_BMAP(vp, lbn, &devvp, &blkno, &run);
 			mutex_enter(uobj->vmobjlock);
-			if (devvp->v_type == VBLK) {
-				if (blkno != 0xffffffffffffffff) { // allocated block
-				//printf("%p %s VBLK %p flags=%x run=%d error=%d\n", devvp, __FUNCTION__,
-				//		(void *)blkno, pg->flags, run, error);
+
+			if (!error && devvp->v_type == VBLK) {
+				if (blkno != (daddr_t)-1) { // allocated block
+
+					/* adjust physical blkno for partial blocks */
+					blkno += ((offset - ((off_t)lbn << fs_bshift)) >> dev_bshift);
+					//printf("%p %s VBLK %p flags=%x run=%d error=%d\n", devvp, __FUNCTION__,
+					//		(void *)blkno, pg->flags, run, error);
 					pg->uanon = (void *) (solo5_diskmem() + (blkno * 512));
 					pg->flags = PG_CLEAN|PG_BUSY;
 					UVM_PAGE_OWN(pg, "uvn_findpage");
