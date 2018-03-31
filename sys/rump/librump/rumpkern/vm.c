@@ -179,6 +179,58 @@ pgdtor(void *arg, void *obj)
 }
 
 static struct pool_cache pagecache;
+static struct pool_cache pagedisk;
+
+
+struct ukvm_blkinfo {
+    uint64_t capacity;       /* Capacity of block device, bytes */
+    uint64_t block_size;     /* Minimum I/O unit (block size), bytes */
+    uint8_t *diskmem;           /* Memory mapped disk */
+};
+
+#define LINUX_HYPERCALL_ADDRESS 0x10000
+enum ukvm_hypercall {
+    /* UKVM_HYPERCALL_RESERVED=0 */
+    UKVM_HYPERCALL_WALLTIME=1,
+    UKVM_HYPERCALL_PUTS,
+    UKVM_HYPERCALL_POLL,
+    UKVM_HYPERCALL_BLKINFO,
+    UKVM_HYPERCALL_BLKWRITE,
+    UKVM_HYPERCALL_BLKREAD,
+    UKVM_HYPERCALL_NETINFO,
+    UKVM_HYPERCALL_NETWRITE,
+    UKVM_HYPERCALL_NETREAD,
+    UKVM_HYPERCALL_HALT,
+    UKVM_HYPERCALL_MAX
+};
+
+static inline void ukvm_do_hypercall(int n, void *arg)
+{
+    uint64_t hcaddr = *((uint64_t *)LINUX_HYPERCALL_ADDRESS);
+    void (*_hc)(int,void *) = (void (*)(int, void *))hcaddr;
+    _hc(n, arg);
+}
+
+/*
+ * Retrieves information about the block device. Caller must supply space for
+ * struct solo5_block_info in (info).
+ */
+static uint8_t *diskmem = NULL;
+
+static uint8_t *solo5_diskmem(void)
+{
+	if (diskmem == NULL) {
+		struct ukvm_blkinfo bi;
+		ukvm_do_hypercall(UKVM_HYPERCALL_BLKINFO, &bi);
+		diskmem = (uint8_t *)bi.diskmem;
+		return (uint8_t *)bi.diskmem;
+	} else {
+		return diskmem;
+	}
+}
+
+
+
 
 /*
  * Called with the object locked.  We don't support anons.
@@ -192,18 +244,58 @@ uvm_pagealloc_strat(struct uvm_object *uobj, voff_t off, struct vm_anon *anon,
 	KASSERT(uobj && mutex_owned(uobj->vmobjlock));
 	KASSERT(anon == NULL);
 
-	pg = pool_cache_get(&pagecache, PR_NOWAIT);
-	if (__predict_false(pg == NULL)) {
-		return NULL;
+	// rkj
+	int run;
+	struct vnode *devvp, *vp = (struct vnode *)uobj;
+	const int fs_bshift = (vp->v_type != VBLK) ?
+	    vp->v_mount->mnt_fs_bshift : DEV_BSHIFT;
+	const int dev_bshift = (vp->v_type != VBLK) ?
+	    vp->v_mount->mnt_dev_bshift : DEV_BSHIFT;
+	daddr_t lbn = off >> fs_bshift;
+	daddr_t blkno;
+	mutex_exit(uobj->vmobjlock);
+	int error = VOP_BMAP(vp, lbn, &devvp, &blkno, &run);
+	mutex_enter(uobj->vmobjlock);
+
+	if (!error && devvp->v_type == VBLK) {
+		if (blkno != (daddr_t)-1) { // allocated block
+
+			/* adjust physical blkno for partial blocks */
+			blkno += ((off - ((off_t)lbn << fs_bshift)) >> dev_bshift);
+
+			pg = pool_cache_get(&pagedisk, PR_NOWAIT);
+			if (__predict_false(pg == NULL)) {
+				return NULL;
+			}
+
+			pg->uanon = (void *) (solo5_diskmem() + (blkno * 512));
+			pg->flags = PG_CLEAN|PG_BUSY;
+			UVM_PAGE_OWN(pg, "uvn_findpage");
+			UVMHIST_LOG(ubchist, "found %p (color %u)",
+			    pg, VM_PGCOLOR_BUCKET(pg), 0,0);
+
+			pg->flags = PG_CLEAN|PG_BUSY;
+		} else {
+			pg = pool_cache_get(&pagecache, PR_NOWAIT);
+			if (__predict_false(pg == NULL)) {
+				return NULL;
+			}
+			pg->flags = PG_CLEAN|PG_BUSY|PG_FAKE;
+		}
+	} else {
+		pg = pool_cache_get(&pagecache, PR_NOWAIT);
+		if (__predict_false(pg == NULL)) {
+			return NULL;
+		}
+		pg->flags = PG_CLEAN|PG_BUSY|PG_FAKE;
+	}
+
+	if (flags & UVM_PGA_ZERO) {
+		uvm_pagezero(pg);
 	}
 
 	pg->offset = off;
 	pg->uobject = uobj;
-
-	pg->flags = PG_CLEAN|PG_BUSY|PG_FAKE;
-	if (flags & UVM_PGA_ZERO) {
-		uvm_pagezero(pg);
-	}
 
 	TAILQ_INSERT_TAIL(&uobj->memq, pg, listq.queue);
 	(void)rb_tree_insert_node(&uobj->rb_tree, pg);
@@ -396,6 +488,9 @@ uvm_init(void)
 
 	pool_cache_bootstrap(&pagecache, sizeof(struct vm_page), 0, 0, 0,
 	    "page$", NULL, IPL_NONE, pgctor, pgdtor, NULL);
+
+	pool_cache_bootstrap(&pagedisk, sizeof(struct vm_page), 0, 0, 0,
+	    "disk_page$", NULL, IPL_NONE, NULL, NULL, NULL);
 
 	/* create vmspace used by local clients */
 	rump_vmspace_local = kmem_zalloc(sizeof(*rump_vmspace_local), KM_SLEEP);
