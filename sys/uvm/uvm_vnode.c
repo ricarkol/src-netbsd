@@ -232,7 +232,6 @@ uvn_findpages(struct uvm_object *uobj, voff_t offset, int *npagesp,
 	return (found);
 }
 
-
 static int
 uvn_findpage(struct uvm_object *uobj, voff_t offset, struct vm_page **pgp,
     int flags)
@@ -248,7 +247,6 @@ uvn_findpage(struct uvm_object *uobj, voff_t offset, struct vm_page **pgp,
 		UVMHIST_LOG(ubchist, "dontcare", 0,0,0,0);
 		return 0;
 	}
-
 	for (;;) {
 		/* look for an existing page */
 		pg = uvm_pagelookup(uobj, offset);
@@ -273,7 +271,6 @@ uvn_findpage(struct uvm_object *uobj, voff_t offset, struct vm_page **pgp,
 			}
 			UVMHIST_LOG(ubchist, "alloced %p (color %u)", pg,
 			    VM_PGCOLOR_BUCKET(pg), 0,0);
-
 			break;
 		} else if (flags & UFP_NOCACHE) {
 			UVMHIST_LOG(ubchist, "nocache",0,0,0,0);
