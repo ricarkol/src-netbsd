@@ -309,7 +309,7 @@ cpu_reboot(int howto, char *bootstr)
 	int ruhow = 0;
 	void *finiarg;
 
-	printf("rump kernel halting...\n");
+	aprint_verbose("rump kernel halting...\n");
 
 	if (!RUMP_LOCALPROC_P(curproc))
 		finiarg = RUMP_SPVM2CTL(curproc->p_vmspace);

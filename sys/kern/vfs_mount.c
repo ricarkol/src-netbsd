@@ -915,7 +915,7 @@ bool
 vfs_unmountall(struct lwp *l)
 {
 
-	printf("unmounting file systems...\n");
+	aprint_verbose("unmounting file systems...\n");
 	return vfs_unmountall1(l, true, true);
 }
 
@@ -992,7 +992,7 @@ vfs_unmountall1(struct lwp *l, bool force, bool verbose)
 		}
 	}
 	if (verbose) {
-		printf("unmounting done\n");
+		aprint_verbose("unmounting done\n");
 	}
 	if (any_error && verbose) {
 		printf("WARNING: some file systems would not unmount\n");
@@ -1003,7 +1003,7 @@ vfs_unmountall1(struct lwp *l, bool force, bool verbose)
 void
 vfs_sync_all(struct lwp *l)
 {
-	printf("syncing disks... ");
+	aprint_verbose("syncing disks... ");
 
 	/* remove user processes from run queue */
 	suspendsched();
@@ -1019,10 +1019,10 @@ vfs_sync_all(struct lwp *l)
 #if defined(DDB) && defined(DEBUG_HALT_BUSY)
 		Debugger();
 #endif
-		printf("giving up\n");
+		aprint_verbose("giving up\n");
 		return;
 	} else
-		printf("done\n");
+		aprint_verbose("done\n");
 }
 
 /*
