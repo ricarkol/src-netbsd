@@ -1,5 +1,7 @@
 #	$NetBSD: Makefile.zfsmod,v 1.6 2016/06/18 21:45:05 christos Exp $
 
+
+
 ZFSDIR=	${S}/../external/cddl/osnet
 
 .PATH:	${ZFSDIR}/dist/common/zfs
@@ -16,13 +18,92 @@ SRCS+=	zprop_common.c
 
 #SRCS+=	gfs.c
 
+# /home/kollerr/nabla-base-build/rumprun/src-netbsd/external/cddl/osnet/dist/common/nvpair/nvpair.c
+#.PATH: ${ZFSDIR}/dist/uts/common/nvpair
+#SRCS+= nvpair.c
+
+.PATH: ${ZFSDIR}/dist/uts/common/os
+
+SRCS+= list.c
+SRCS+= nvpair_alloc_system.c
+
+# ../src-netbsd/external/cddl/osnet/dist/uts/common/zmod/adler32.c
 .PATH: ${ZFSDIR}/dist/uts/common/zmod
 
 #SRCS+= trees.c
+#SRCS+= zmod.c
+#SRCS+= deflate.c
+#SRCS+= inflate.c
+#SRCS+= zmod_subr.c
+
+SRCS+= adler32.c
+SRCS+= crc32.c
+#SRCS+= deflate.c
+#SRCS+= inffast.c
+#SRCS+= inflate.c
+#SRCS+= inftrees.c
+#SRCS+= trees.c
+SRCS+= zlib_lint.c
+#SRCS+= zmod.c
+#SRCS+= zmod_subr.c
+#SRCS+= zutil.c
+
 
 .PATH:	${ZFSDIR}/lib/libzpool
 
 SRCS+=	atomic.c
+
+.PATH:  ${ZFSDIR}/sys/kern
+
+# callb.c  ddi.c  fm.c  kobj.c  kstat.c  misc.c  mod.c  opensolaris.c  policy.c  printf.c  string.c  taskq.c  vfs.c  zfs_stub.c  zone.c
+
+#SRCS+= bash
+SRCS+= callb.c
+SRCS+= ddi.c
+SRCS+= fm.c
+SRCS+= kobj.c
+SRCS+= kstat.c
+SRCS+= misc.c
+SRCS+= mod.c
+SRCS+= opensolaris.c
+SRCS+= policy.c
+SRCS+= printf.c
+SRCS+= string.c
+SRCS+= taskq.c
+SRCS+= vfs.c
+SRCS+= zfs_stub.c
+SRCS+= zone.c
+
+
+#../src-netbsd/external/cddl/osnet/dist/common/avl/avl.c
+
+.PATH:	${ZFSDIR}/dist/common/avl
+
+SRCS+=	avl.c
+
+#../src-netbsd/external/cddl/osnet/dist/common/nvpair/nvpair.c
+.PATH:	${ZFSDIR}/dist/common/nvpair
+
+SRCS+=	nvpair.c
+SRCS+=  nvpair_alloc_fixed.c
+
+# ../src-netbsd/external/cddl/osnet/dist/common/acl/acl_common.c
+.PATH:	${ZFSDIR}/dist/common/acl
+
+SRCS+=	acl_common.c
+
+#../src-netbsd/external/cddl/osnet/dist/common/unicode/u8_textprep.c
+.PATH:	${ZFSDIR}/dist/common/unicode
+
+SRCS+=	u8_textprep.c
+
+#../src-netbsd/external/cddl/osnet/dist/uts/common/rpc/xdr.c
+#../src-netbsd/external/cddl/osnet/dist/uts/common/rpc/xdr_mem.c
+.PATH:	${ZFSDIR}/dist/uts/common/rpc
+
+SRCS+=	xdr.c
+SRCS+=	xdr_mem.c
+SRCS+=  xdr_array.c
 
 .PATH:	${ZFSDIR}/dist/uts/common/fs/zfs
 
@@ -116,6 +197,8 @@ CWARNFLAGS+=	-Wno-missing-prototypes
 CWARNFLAGS+=	-Wno-format
 
 CPPFLAGS+=	-I${ZFSDIR}/sys
+CPPFLAGS+=	-I${ZFSDIR}/sys/sys
+CPPFLAGS+=	-I${ZFSDIR}/sys/sys/acl
 CPPFLAGS+=      -I${ZFSDIR}/dist/common
 CPPFLAGS+=	-I${ZFSDIR}/dist/common/acl
 CPPFLAGS+=	-I${ZFSDIR}/dist/common/zfs
@@ -124,6 +207,10 @@ CPPFLAGS+=	-I${ZFSDIR}/dist/uts/common/zmod
 CPPFLAGS+=	-I${ZFSDIR}/dist/uts/common
 CPPFLAGS+=	-I${ZFSDIR}/dist/uts/common/zfs
 CPPFLAGS+=	-I${ZFSDIR}/dist/uts/common
+CPPFLAGS+=	-I${ZFSDIR}/dist/uts/common/rpc
+
+# ../src-netbsd/external/cddl/osnet/dist/uts/common/rpc/xdr.h
+# ../src-netbsd/external/cddl/osnet/sys/sys/acl/acl_common.h
 
 CPPFLAGS+=	-Dcaddr_t=__caddr_t "-D__va_list=va_list" -D__NetBSD__
 CPPFLAGS+=	-std=c99
