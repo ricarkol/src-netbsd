@@ -448,6 +448,7 @@ bufinit(void)
 	u_int i;
 
 	biodone_vfs = biodone;
+	printf("bufinit\n");
 
 	mutex_init(&bufcache_lock, MUTEX_DEFAULT, IPL_NONE);
 	mutex_init(&buffer_lock, MUTEX_DEFAULT, IPL_NONE);
@@ -484,6 +485,7 @@ bufinit(void)
 	bufio_cache = pool_cache_init(sizeof(buf_t), 0, 0, 0,
 	    "biopl", NULL, IPL_BIO, NULL, NULL, NULL);
 
+	// rkj: the actual memory content buffers
 	for (i = 0; i < NMEMPOOLS; i++) {
 		struct pool_allocator *pa;
 		struct pool *pp = &bmempools[i];
@@ -668,6 +670,19 @@ bio_doread(struct vnode *vp, daddr_t blkno, int size, int async)
 	struct mount *mp;
 
 	bp = getblk(vp, blkno, size, 0, 0);
+
+	daddr_t sec = 128 + 16*blkno;
+	daddr_t off = 512 * sec;
+	daddr_t memlfs = 0x7f5eafb80000 + off;
+	// called getblk on 1 blkno=50 size=8192 addr=0x4c8000
+	if ((vp->v_type == 1 || vp->v_type == 3) &&
+				blkno > 0) {
+		;
+	} else
+	printf("called getblk on %d blkno=%ld size=%d "
+		"addr=%p memlfs_addr=%p\n",
+		vp->v_type, (long)blkno, size,
+		(void *)bp->b_data, (void *)memlfs);
 
 	/*
 	 * getblk() may return NULL if we are the pagedaemon.
@@ -1182,7 +1197,7 @@ getblk(struct vnode *vp, daddr_t blkno, int size, int slpflag, int slptimeo)
 		LIST_INSERT_HEAD(BUFHASH(vp, blkno), bp, b_hash);
 		bp->b_blkno = bp->b_lblkno = bp->b_rawblkno = blkno;
 		mutex_enter(vp->v_interlock);
-		bgetvp(vp, bp);
+		bgetvp(vp, bp); // Associate a buffer with a vnode.
 		mutex_exit(vp->v_interlock);
 		preserve = 0;
 	}
@@ -1195,12 +1210,31 @@ getblk(struct vnode *vp, daddr_t blkno, int size, int slpflag, int slptimeo)
 	if (ISSET(bp->b_flags, B_LOCKED)) {
 		KASSERT(bp->b_bufsize >= size);
 	} else {
-		if (allocbuf(bp, size, preserve)) {
-			mutex_enter(&bufcache_lock);
-			LIST_REMOVE(bp, b_hash);
-			mutex_exit(&bufcache_lock);
-			brelse(bp, BC_INVAL);
-			return NULL;
+		if ((vp->v_type == 1 || vp->v_type == 3) &&
+				blkno > 0) {
+			// type is 1: VREG
+			// rkj
+			daddr_t sec;
+			if (vp->v_type == 1)
+				sec = 128 + 16*blkno;
+			else
+				sec = blkno;
+
+			daddr_t off = 512 * sec;
+			bp->b_bcount = size;
+			bp->b_bufsize = size;
+			bp->b_data = (void *)(0x100000000000 + off);
+			//printf("mapping %ld to %p\n",
+			//	blkno, bp->b_data);
+			SET(bp->b_oflags, BO_DONE);
+		} else {
+			if (allocbuf(bp, size, preserve)) {
+				mutex_enter(&bufcache_lock);
+				LIST_REMOVE(bp, b_hash);
+				mutex_exit(&bufcache_lock);
+				brelse(bp, BC_INVAL);
+				return NULL;
+			}
 		}
 	}
 	BIO_SETPRIO(bp, BPRIO_DEFAULT);
