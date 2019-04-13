@@ -669,20 +669,35 @@ bio_doread(struct vnode *vp, daddr_t blkno, int size, int async)
 	buf_t *bp;
 	struct mount *mp;
 
+	/*
+	unsigned long i;
+	static int first_blkread = 1;
+	if (first_blkread && vp->v_type == 3) {
+		for (i = 0; i < 10000; i += 16) {
+			buf_t *bp2 = NULL;
+			if (blkno != i)
+				bp2 = getblk(vp, i, size, 0, 0);
+			bp2 = bp2;
+		}
+		first_blkread = 0;
+	}
+	*/
 	bp = getblk(vp, blkno, size, 0, 0);
 
+	/*
 	daddr_t sec = 128 + 16*blkno;
 	daddr_t off = 512 * sec;
-	daddr_t memlfs = 0x7f5eafb80000 + off;
+	daddr_t memlfs = 0x100000000000 + off;
+
+	// rkj
 	// called getblk on 1 blkno=50 size=8192 addr=0x4c8000
-	if ((vp->v_type == 1 || vp->v_type == 3) &&
-				blkno > 0) {
-		;
-	} else
+	if (vp->v_type == 1) {
 	printf("called getblk on %d blkno=%ld size=%d "
 		"addr=%p memlfs_addr=%p\n",
 		vp->v_type, (long)blkno, size,
 		(void *)bp->b_data, (void *)memlfs);
+	}
+	*/
 
 	/*
 	 * getblk() may return NULL if we are the pagedaemon.
@@ -1210,7 +1225,8 @@ getblk(struct vnode *vp, daddr_t blkno, int size, int slpflag, int slptimeo)
 	if (ISSET(bp->b_flags, B_LOCKED)) {
 		KASSERT(bp->b_bufsize >= size);
 	} else {
-		if ((vp->v_type == 1 || vp->v_type == 3) &&
+		if (vp->v_type == 3 &&
+		//if ((vp->v_type == 1 || vp->v_type == 3) &&
 				blkno > 0) {
 			// type is 1: VREG
 			// rkj
@@ -1224,9 +1240,10 @@ getblk(struct vnode *vp, daddr_t blkno, int size, int slpflag, int slptimeo)
 			bp->b_bcount = size;
 			bp->b_bufsize = size;
 			bp->b_data = (void *)(0x100000000000 + off);
-			//printf("mapping %ld to %p\n",
-			//	blkno, bp->b_data);
+			printf("mapping blkno=%ld to sec=%ld addr=%p\n",
+				blkno, sec, bp->b_data);
 			SET(bp->b_oflags, BO_DONE);
+			
 		} else {
 			if (allocbuf(bp, size, preserve)) {
 				mutex_enter(&bufcache_lock);

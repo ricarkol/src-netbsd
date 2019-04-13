@@ -544,16 +544,21 @@ dostrategy(struct buf *bp)
 
 	off += rblk->rblk_hostoffset;
 	DPRINTF(("rumpblk_strategy: 0x%x bytes %s off 0x%" PRIx64
-	    " (0x%" PRIx64 " - 0x%" PRIx64 "), %ssync\n",
+	    " (0x%" PRIx64 " - 0x%" PRIx64 "), %ssync -- hostoffset=0x%" PRIx64"\n",
 	    bp->b_bcount, BUF_ISREAD(bp) ? "READ" : "WRITE",
-	    off, off, (off + bp->b_bcount), async ? "a" : ""));
+	    off, off, (off + bp->b_bcount), async ? "a" : "", rblk->rblk_hostoffset));
 
 	op = BUF_ISREAD(bp) ? RUMPUSER_BIO_READ : RUMPUSER_BIO_WRITE;
 	if (BUF_ISWRITE(bp) && !async)
 		op |= RUMPUSER_BIO_SYNC;
 
-	rumpuser_bio(rblk->rblk_fd, op, bp->b_data, bp->b_bcount, off,
-	    rump_biodone, bp);
+	if (BUF_ISREAD(bp)) {
+		bp->b_data = (void *)(0x100000000000 + off);
+		SET(bp->b_oflags, BO_DONE);
+	} else {
+		rumpuser_bio(rblk->rblk_fd, op, bp->b_data,
+			bp->b_bcount, off, rump_biodone, bp);
+	}
 }
 
 void
