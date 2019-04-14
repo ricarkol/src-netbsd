@@ -1482,6 +1482,7 @@ lfs_strategy(void *v)
 
 	if (vp->v_type == VBLK || vp->v_type == VCHR)
 		panic("lfs_strategy: spec");
+
 	KASSERT(bp->b_bcount != 0);
 	if (bp->b_blkno == bp->b_lblkno) {
 		error = VOP_BMAP(vp, bp->b_lblkno, NULL, &bp->b_blkno,
@@ -1500,6 +1501,7 @@ lfs_strategy(void *v)
 		biodone(bp);
 		return (0);
 	}
+	printf("lfs 1: strategy %d\n", (int)bp->b_blkno);
 
 	slept = 1;
 	loopcount = 0;
@@ -1565,6 +1567,7 @@ lfs_strategy(void *v)
 	mutex_exit(&lfs_lock);
 
 	vp = ip->i_devvp;
+	printf("lfs 2: strategy %d\n", (int)bp->b_blkno);
 	return VOP_STRATEGY(vp, bp);
 }
 

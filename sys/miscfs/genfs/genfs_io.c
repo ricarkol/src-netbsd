@@ -347,6 +347,7 @@ startover:
 	 * if the pages are already resident, just return them.
 	 */
 
+	// rkj: here is where we could return the pages fetched by the block device
 	for (i = 0; i < npages; i++) {
 		struct vm_page *pg = pgs[ridx + i];
 
@@ -382,6 +383,8 @@ startover:
 		npages += ridx;
 		goto out;
 	}
+
+	// rkj the page is not there
 
 	/*
 	 * the page wasn't resident and we're not overwriting,
@@ -531,10 +534,12 @@ genfs_getpages_read(struct vnode *vp, struct vm_page **pgs, int npages,
 	tailbytes = totalbytes - bytes;
 	skipbytes = 0;
 
+	// rkj: this guy gets the address, and we then reset it to memlfs
 	kva = uvm_pagermapin(pgs, npages,
 	    UVMPAGER_MAPIN_READ | (async ? 0 : UVMPAGER_MAPIN_WAITOK));
 	if (kva == 0)
 		return EBUSY;
+	printf("genfs_getpages_read vp=%p kva=%p\n", vp, (void *)kva);
 
 	mbp = getiobuf(vp, true);
 	mbp->b_bufsize = totalbytes;
@@ -682,6 +687,7 @@ genfs_getpages_read(struct vnode *vp, struct vm_page **pgs, int npages,
 		 * and start it going.
 		 */
 
+		// rkj, mbp is using kva
 		if (offset == startoffset && iobytes == bytes) {
 			bp = mbp;
 		} else {
@@ -700,11 +706,25 @@ genfs_getpages_read(struct vnode *vp, struct vm_page **pgs, int npages,
 		    "bp %p offset 0x%x bcount 0x%x blkno 0x%x",
 		    bp, offset, bp->b_bcount, bp->b_blkno);
 
-		VOP_STRATEGY(devvp, bp);
+		if (kva == 0x10000b952000) {
+		//if (kva == 0x10000b952000) {
+			printf("genfs_getpages_read not doing read "
+				"vp=%p bp->b_data=%p blkno=%lu\n",
+			devvp, (void *)bp->b_data, bp->b_blkno);
+			SET(bp->b_oflags, BO_DONE);
+		} else {
+			VOP_STRATEGY(devvp, bp);
+		}
 	}
 
 loopdone:
 	nestiobuf_done(mbp, skipbytes, error);
+		// rkj
+		//printf("resetting b_data to %p\n",
+		//	(void *)((unsigned long)bp->b_data));
+		//mbp->b_data = (void *)((unsigned long)bp->b_data + (offset - startoffset));
+		//mbp->b_data = (void *)((unsigned long)bp->b_data);
+
 	if (async) {
 		UVMHIST_LOG(ubchist, "returning 0 (async)",0,0,0,0);
 		if (!glocked) {
@@ -717,7 +737,7 @@ loopdone:
 	}
 
 	/* Remove the mapping (make KVA available as soon as possible) */
-	uvm_pagermapout(kva, npages);
+	//uvm_pagermapout(kva, npages);
 
 	/*
 	 * if this we encountered a hole then we have to do a little more work.

@@ -669,35 +669,7 @@ bio_doread(struct vnode *vp, daddr_t blkno, int size, int async)
 	buf_t *bp;
 	struct mount *mp;
 
-	/*
-	unsigned long i;
-	static int first_blkread = 1;
-	if (first_blkread && vp->v_type == 3) {
-		for (i = 0; i < 10000; i += 16) {
-			buf_t *bp2 = NULL;
-			if (blkno != i)
-				bp2 = getblk(vp, i, size, 0, 0);
-			bp2 = bp2;
-		}
-		first_blkread = 0;
-	}
-	*/
 	bp = getblk(vp, blkno, size, 0, 0);
-
-	/*
-	daddr_t sec = 128 + 16*blkno;
-	daddr_t off = 512 * sec;
-	daddr_t memlfs = 0x100000000000 + off;
-
-	// rkj
-	// called getblk on 1 blkno=50 size=8192 addr=0x4c8000
-	if (vp->v_type == 1) {
-	printf("called getblk on %d blkno=%ld size=%d "
-		"addr=%p memlfs_addr=%p\n",
-		vp->v_type, (long)blkno, size,
-		(void *)bp->b_data, (void *)memlfs);
-	}
-	*/
 
 	/*
 	 * getblk() may return NULL if we are the pagedaemon.
@@ -1179,6 +1151,7 @@ getblk(struct vnode *vp, daddr_t blkno, int size, int slpflag, int slptimeo)
 {
 	int err, preserve;
 	buf_t *bp;
+	int miss = 0;
 
 	mutex_enter(&bufcache_lock);
  loop:
@@ -1207,6 +1180,8 @@ getblk(struct vnode *vp, daddr_t blkno, int size, int slpflag, int slptimeo)
 			/* The block has come into memory in the meantime. */
 			brelsel(bp, 0);
 			goto loop;
+		} else {
+			miss = 1;
 		}
 
 		LIST_INSERT_HEAD(BUFHASH(vp, blkno), bp, b_hash);
@@ -1225,26 +1200,7 @@ getblk(struct vnode *vp, daddr_t blkno, int size, int slpflag, int slptimeo)
 	if (ISSET(bp->b_flags, B_LOCKED)) {
 		KASSERT(bp->b_bufsize >= size);
 	} else {
-		if (vp->v_type == 3 &&
-		//if ((vp->v_type == 1 || vp->v_type == 3) &&
-				blkno > 0) {
-			// type is 1: VREG
-			// rkj
-			daddr_t sec;
-			if (vp->v_type == 1)
-				sec = 128 + 16*blkno;
-			else
-				sec = blkno;
-
-			daddr_t off = 512 * sec;
-			bp->b_bcount = size;
-			bp->b_bufsize = size;
-			bp->b_data = (void *)(0x100000000000 + off);
-			printf("mapping blkno=%ld to sec=%ld addr=%p\n",
-				blkno, sec, bp->b_data);
-			SET(bp->b_oflags, BO_DONE);
-			
-		} else {
+		{
 			if (allocbuf(bp, size, preserve)) {
 				mutex_enter(&bufcache_lock);
 				LIST_REMOVE(bp, b_hash);
@@ -1253,7 +1209,31 @@ getblk(struct vnode *vp, daddr_t blkno, int size, int slpflag, int slptimeo)
 				return NULL;
 			}
 		}
+		// rkj
+		/*
+		if ((vp->v_type == 3) &&
+		//if ((vp->v_type == 1 || vp->v_type == 3) &&
+				blkno > 0) {
+			bp->b_bcount = size;
+			bp->b_bufsize = size;
+			bp->b_data = NULL;
+
+		}
+		// can't set this to NULL as LFS is calling getblk()
+		// and using the bp directly.
+		*/
 	}
+
+	// rkj
+	// called getblk on 1 blkno=50 size=8192 addr=0x4c8000
+	if (miss) {
+		printf("called getblk on %d blkno=%ld size=%d "
+			"addr=%p\n",
+			vp->v_type, (long)blkno, size,
+			(void *)bp->b_data);
+	}
+	//if (vp->v_type == 1 && blkno > 0 && ISSET(bp->b_flags, B_READ))
+	//	VOP_STRATEGY(vp, bp);
 	BIO_SETPRIO(bp, BPRIO_DEFAULT);
 	return (bp);
 }

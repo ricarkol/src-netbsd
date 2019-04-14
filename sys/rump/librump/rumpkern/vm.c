@@ -506,6 +506,12 @@ uvm_pagermapin(struct vm_page **pgs, int npages, int flags)
 	/* allocate structures */
 	pgri = kmem_alloc(sizeof(*pgri), KM_SLEEP);
 	pgri->pgr_kva = (vaddr_t)kmem_alloc(npages * PAGE_SIZE, KM_SLEEP);
+	// rkj: maybe we can do the switch here
+	if (pgri->pgr_kva == 0x9ea000) {
+		pgs[0]->uanon = (void *) 0x10000b952000;
+		pgri->pgr_kva = 0x10000b952000;
+	}
+	printf("uvm_pagermapin alloc kva=%p\n", (void *)pgri->pgr_kva);
 	pgri->pgr_npages = npages;
 	pgri->pgr_pgs = kmem_alloc(sizeof(struct vm_page *) * npages, KM_SLEEP);
 	pgri->pgr_read = (flags & UVMPAGER_MAPIN_READ) != 0;
