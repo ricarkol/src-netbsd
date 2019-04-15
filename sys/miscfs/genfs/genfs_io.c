@@ -540,7 +540,7 @@ genfs_getpages_read(struct vnode *vp, struct vm_page **pgs, int npages,
 	kva = (vaddr_t)kmem_alloc(npages * PAGE_SIZE, KM_SLEEP);
 	if (kva == 0)
 		return EBUSY;
-	printf("genfs_getpages_read vp=%p kva=%p\n", vp, (void *)kva);
+	printf("genfs_getpages_read async=%d vp=%p kva=%p\n", async, vp, (void *)kva);
 
 	mbp = getiobuf(vp, true);
 	mbp->b_bufsize = totalbytes;
@@ -688,7 +688,6 @@ genfs_getpages_read(struct vnode *vp, struct vm_page **pgs, int npages,
 		 * and start it going.
 		 */
 
-		// rkj, mbp is using kva
 		if (offset == startoffset && iobytes == bytes) {
 			bp = mbp;
 		} else {
@@ -707,18 +706,15 @@ genfs_getpages_read(struct vnode *vp, struct vm_page **pgs, int npages,
 		    "bp %p offset 0x%x bcount 0x%x blkno 0x%x",
 		    bp, offset, bp->b_bcount, bp->b_blkno);
 
+		assert(devvp->v_tag == VT_RUMP);
 		pgs[0]->uanon = (void *)(0x100000000000 + bp->b_blkno * 512ULL);
 		SET(bp->b_oflags, BO_DONE);
 	}
 
 loopdone:
 	nestiobuf_done(mbp, skipbytes, error);
-		// rkj
-		//printf("resetting b_data to %p\n",
-		//	(void *)((unsigned long)bp->b_data));
-		//mbp->b_data = (void *)((unsigned long)bp->b_data + (offset - startoffset));
-		//mbp->b_data = (void *)((unsigned long)bp->b_data);
 
+	assert(!async);
 	if (async) {
 		UVMHIST_LOG(ubchist, "returning 0 (async)",0,0,0,0);
 		if (!glocked) {
@@ -726,9 +722,9 @@ loopdone:
 		}
 		return 0;
 	}
-	//if (bp != NULL) {
-	//	error = biowait(mbp);
-	//}
+	if (bp != NULL) {
+		error = biowait(mbp);
+	}
 
 	/* Remove the mapping (make KVA available as soon as possible) */
 	//uvm_pagermapout(kva, npages);
