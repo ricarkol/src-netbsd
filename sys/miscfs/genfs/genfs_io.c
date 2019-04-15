@@ -535,8 +535,9 @@ genfs_getpages_read(struct vnode *vp, struct vm_page **pgs, int npages,
 	skipbytes = 0;
 
 	// rkj: this guy gets the address, and we then reset it to memlfs
-	kva = uvm_pagermapin(pgs, npages,
-	    UVMPAGER_MAPIN_READ | (async ? 0 : UVMPAGER_MAPIN_WAITOK));
+	//kva = uvm_pagermapin(pgs, npages,
+	//    UVMPAGER_MAPIN_READ | (async ? 0 : UVMPAGER_MAPIN_WAITOK));
+	kva = (vaddr_t)kmem_alloc(npages * PAGE_SIZE, KM_SLEEP);
 	if (kva == 0)
 		return EBUSY;
 	printf("genfs_getpages_read vp=%p kva=%p\n", vp, (void *)kva);
@@ -706,15 +707,8 @@ genfs_getpages_read(struct vnode *vp, struct vm_page **pgs, int npages,
 		    "bp %p offset 0x%x bcount 0x%x blkno 0x%x",
 		    bp, offset, bp->b_bcount, bp->b_blkno);
 
-		if (kva == 0x10000b952000) {
-		//if (kva == 0x10000b952000) {
-			printf("genfs_getpages_read not doing read "
-				"vp=%p bp->b_data=%p blkno=%lu\n",
-			devvp, (void *)bp->b_data, bp->b_blkno);
-			SET(bp->b_oflags, BO_DONE);
-		} else {
-			VOP_STRATEGY(devvp, bp);
-		}
+		pgs[0]->uanon = (void *)(0x100000000000 + bp->b_blkno * 512ULL);
+		SET(bp->b_oflags, BO_DONE);
 	}
 
 loopdone:
@@ -732,12 +726,13 @@ loopdone:
 		}
 		return 0;
 	}
-	if (bp != NULL) {
-		error = biowait(mbp);
-	}
+	//if (bp != NULL) {
+	//	error = biowait(mbp);
+	//}
 
 	/* Remove the mapping (make KVA available as soon as possible) */
 	//uvm_pagermapout(kva, npages);
+	kmem_free((void*)kva, npages * PAGE_SIZE);
 
 	/*
 	 * if this we encountered a hole then we have to do a little more work.
