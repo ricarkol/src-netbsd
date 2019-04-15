@@ -176,13 +176,6 @@ uvn_get(struct uvm_object *uobj, voff_t offset,
 
 	UVMHIST_LOG(ubchist, "vp %p off 0x%x", vp, (int)offset, 0,0);
 
-	if (vp->v_type == VREG && (access_type & VM_PROT_WRITE) == 0
-	    && (flags & PGO_LOCKED) == 0) {
-		vn_ra_allocctx(vp);
-		uvm_ra_request(vp->v_ractx, advice, uobj, offset,
-		    *npagesp << PAGE_SHIFT);
-	}
-
 	error = VOP_GETPAGES(vp, offset, pps, npagesp, centeridx,
 			     access_type, advice, flags);
 
