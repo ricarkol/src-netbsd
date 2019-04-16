@@ -575,8 +575,6 @@ lfs_order_freelist(struct lfs *fs)
 	ASSERT_NO_SEGLOCK(fs);
 	lfs_seglock(fs, SEGM_PROT);
 
-	printf("lfs_order_freelist\n");
-
 	maxino = ((fs->lfs_ivnode->v_size >> lfs_sb_getbshift(fs)) -
 		  lfs_sb_getcleansz(fs) - lfs_sb_getsegtabsz(fs)) * lfs_sb_getifpb(fs);
 	fs->lfs_ino_bitmap =

@@ -448,7 +448,6 @@ bufinit(void)
 	u_int i;
 
 	biodone_vfs = biodone;
-	printf("bufinit\n");
 
 	mutex_init(&bufcache_lock, MUTEX_DEFAULT, IPL_NONE);
 	mutex_init(&buffer_lock, MUTEX_DEFAULT, IPL_NONE);
@@ -1151,7 +1150,6 @@ getblk(struct vnode *vp, daddr_t blkno, int size, int slpflag, int slptimeo)
 {
 	int err, preserve;
 	buf_t *bp;
-	int miss = 0;
 
 	mutex_enter(&bufcache_lock);
  loop:
@@ -1180,8 +1178,6 @@ getblk(struct vnode *vp, daddr_t blkno, int size, int slpflag, int slptimeo)
 			/* The block has come into memory in the meantime. */
 			brelsel(bp, 0);
 			goto loop;
-		} else {
-			miss = 1;
 		}
 
 		LIST_INSERT_HEAD(BUFHASH(vp, blkno), bp, b_hash);
@@ -1200,40 +1196,14 @@ getblk(struct vnode *vp, daddr_t blkno, int size, int slpflag, int slptimeo)
 	if (ISSET(bp->b_flags, B_LOCKED)) {
 		KASSERT(bp->b_bufsize >= size);
 	} else {
-		{
-			if (allocbuf(bp, size, preserve)) {
-				mutex_enter(&bufcache_lock);
-				LIST_REMOVE(bp, b_hash);
-				mutex_exit(&bufcache_lock);
-				brelse(bp, BC_INVAL);
-				return NULL;
-			}
+		if (allocbuf(bp, size, preserve)) {
+			mutex_enter(&bufcache_lock);
+			LIST_REMOVE(bp, b_hash);
+			mutex_exit(&bufcache_lock);
+			brelse(bp, BC_INVAL);
+			return NULL;
 		}
-		// rkj
-		/*
-		if ((vp->v_type == 3) &&
-		//if ((vp->v_type == 1 || vp->v_type == 3) &&
-				blkno > 0) {
-			bp->b_bcount = size;
-			bp->b_bufsize = size;
-			bp->b_data = NULL;
-
-		}
-		// can't set this to NULL as LFS is calling getblk()
-		// and using the bp directly.
-		*/
 	}
-
-	// rkj
-	// called getblk on 1 blkno=50 size=8192 addr=0x4c8000
-	if (miss) {
-		printf("called getblk on %d blkno=%ld size=%d "
-			"addr=%p\n",
-			vp->v_type, (long)blkno, size,
-			(void *)bp->b_data);
-	}
-	//if (vp->v_type == 1 && blkno > 0 && ISSET(bp->b_flags, B_READ))
-	//	VOP_STRATEGY(vp, bp);
 	BIO_SETPRIO(bp, BPRIO_DEFAULT);
 	return (bp);
 }

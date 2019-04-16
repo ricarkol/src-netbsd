@@ -1501,7 +1501,6 @@ lfs_strategy(void *v)
 		biodone(bp);
 		return (0);
 	}
-	printf("lfs 1: strategy %d\n", (int)bp->b_blkno);
 
 	slept = 1;
 	loopcount = 0;
@@ -1567,7 +1566,6 @@ lfs_strategy(void *v)
 	mutex_exit(&lfs_lock);
 
 	vp = ip->i_devvp;
-	printf("lfs 2: strategy %d\n", (int)bp->b_blkno);
 	return VOP_STRATEGY(vp, bp);
 }
 

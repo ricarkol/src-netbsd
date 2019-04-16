@@ -57,7 +57,7 @@ __KERNEL_RCSID(0, "$NetBSD: rumpblk.c,v 1.64 2016/07/07 06:55:44 msaitoh Exp $")
 
 #include <rump/rumpuser.h>
 
-#if 1
+#if 0
 #define DPRINTF(x) printf x
 #else
 #define DPRINTF(x)
