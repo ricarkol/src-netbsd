@@ -540,7 +540,6 @@ genfs_getpages_read(struct vnode *vp, struct vm_page **pgs, int npages,
 	kva = (vaddr_t)kmem_alloc(npages * PAGE_SIZE, KM_SLEEP);
 	if (kva == 0)
 		return EBUSY;
-	printf("genfs_getpages_read async=%d vp=%p kva=%p\n", async, vp, (void *)kva);
 
 	mbp = getiobuf(vp, true);
 	mbp->b_bufsize = totalbytes;
@@ -707,7 +706,9 @@ genfs_getpages_read(struct vnode *vp, struct vm_page **pgs, int npages,
 		    bp, offset, bp->b_bcount, bp->b_blkno);
 
 		assert(devvp->v_tag == VT_RUMP);
-		pgs[0]->uanon = (void *)(0x100000000000 + bp->b_blkno * 512ULL);
+		for (i = 0; i < npages; i++) {
+			pgs[i]->uanon = (void *)(0x100000000000 + bp->b_blkno * 512ULL + i * 4096ULL);
+		}
 		SET(bp->b_oflags, BO_DONE);
 	}
 
