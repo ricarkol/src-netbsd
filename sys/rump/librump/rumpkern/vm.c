@@ -163,9 +163,9 @@ pgctor(void *arg, void *obj, int flags)
 	struct vm_page *pg = obj;
 
 	memset(pg, 0, sizeof(*pg));
-	pg->uanon = (void *)0x100000000000;
-	//pg->uanon = rump_hypermalloc(PAGE_SIZE, PAGE_SIZE,
-	//    (flags & PR_WAITOK) == PR_WAITOK, "pgalloc");
+	//pg->uanon = (void *)0x100000000000;
+	pg->uanon = rump_hypermalloc(PAGE_SIZE, PAGE_SIZE,
+	    (flags & PR_WAITOK) == PR_WAITOK, "pgalloc");
 	return pg->uanon == NULL;
 }
 

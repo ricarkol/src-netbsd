@@ -534,10 +534,16 @@ genfs_getpages_read(struct vnode *vp, struct vm_page **pgs, int npages,
 	tailbytes = totalbytes - bytes;
 	skipbytes = 0;
 
-	// rkj: this guy gets the address, and we then reset it to memlfs
-	//kva = uvm_pagermapin(pgs, npages,
-	//    UVMPAGER_MAPIN_READ | (async ? 0 : UVMPAGER_MAPIN_WAITOK));
-	kva = (vaddr_t)kmem_alloc(npages * PAGE_SIZE, KM_SLEEP);
+	//printf("%s npages=%d bytes=%ld totalbytes=%ld diskeof=%ld startoffset=%ld\n",
+	//	 __FUNCTION__, npages, bytes, totalbytes, diskeof, startoffset);
+
+	if (vp->v_tag == VT_LFS) {
+		kva = (vaddr_t)kmem_alloc(npages * PAGE_SIZE, KM_SLEEP);
+	} else {
+		// rkj: this guy gets the address, and we then reset it to memlfs
+		kva = uvm_pagermapin(pgs, npages,
+		    UVMPAGER_MAPIN_READ | (async ? 0 : UVMPAGER_MAPIN_WAITOK));
+	}
 	if (kva == 0)
 		return EBUSY;
 
@@ -705,11 +711,26 @@ genfs_getpages_read(struct vnode *vp, struct vm_page **pgs, int npages,
 		    "bp %p offset 0x%x bcount 0x%x blkno 0x%x",
 		    bp, offset, bp->b_bcount, bp->b_blkno);
 
-		assert(devvp->v_tag == VT_RUMP);
-		for (i = 0; i < npages; i++) {
-			pgs[i]->uanon = (void *)(0x100000000000 + bp->b_blkno * 512ULL + i * 4096ULL);
+		//assert(offset == startoffset && iobytes == bytes);
+
+		if (offset == startoffset && iobytes == bytes) {
+		} else {
+			printf("vp %p offset 0x%lx startoffset 0x%lx iobytes %ld bytes %ld npages %d\n",
+			    vp, offset, startoffset, iobytes, bytes, npages);
 		}
-		SET(bp->b_oflags, BO_DONE);
+
+		if (vp->v_tag == VT_LFS) {
+			assert(devvp->v_tag == VT_RUMP);
+			for (i = 0; i < npages; i++) {
+				pgs[i]->uanon = (void *)(0x100000000000 + bp->b_blkno * 512ULL + i*4096ULL);
+				//pgs[i]->uanon = (void *)(0x100000000000 + bp->b_blkno * 512ULL + (unsigned long long)i);
+				//pgs[i]->uanon = (void *)(0x100000000000 + (offset - startoffset) + bp->b_blkno * 512ULL + (unsigned long long)i);
+				//printf("pg->uanon = %p = %lu (+%d)\n", pgs[i]->uanon, bp->b_blkno, i);
+			}
+			SET(bp->b_oflags, BO_DONE);
+		} else {
+			VOP_STRATEGY(devvp, bp);
+		}
 	}
 
 loopdone:
@@ -728,8 +749,10 @@ loopdone:
 	}
 
 	/* Remove the mapping (make KVA available as soon as possible) */
-	//uvm_pagermapout(kva, npages);
-	kmem_free((void*)kva, npages * PAGE_SIZE);
+	if (vp->v_tag == VT_LFS)
+		kmem_free((void*)kva, npages * PAGE_SIZE);
+	else
+		uvm_pagermapout(kva, npages);
 
 	/*
 	 * if this we encountered a hole then we have to do a little more work.
