@@ -522,6 +522,7 @@ genfs_getpages_read(struct vnode *vp, struct vm_page **pgs, int npages,
 	bool sawhole = false;
 	int i;
 	int error = 0;
+	int do_memlfs = 0;
 
 	UVMHIST_FUNC(__func__); UVMHIST_CALLED(ubchist);
 
@@ -537,7 +538,9 @@ genfs_getpages_read(struct vnode *vp, struct vm_page **pgs, int npages,
 	//printf("%s npages=%d bytes=%ld totalbytes=%ld diskeof=%ld startoffset=%ld\n",
 	//	 __FUNCTION__, npages, bytes, totalbytes, diskeof, startoffset);
 
-	if (vp->v_tag == VT_LFS) {
+	do_memlfs = vp->v_tag == VT_LFS;// && npages != 4 && npages != 20 && npages != 56 && npages != 24 && npages != 18 && npages != 14 && npages != 28 && npages != 16 && npages != 32;
+	
+	if (do_memlfs) {
 		kva = (vaddr_t)kmem_alloc(npages * PAGE_SIZE, KM_SLEEP);
 	} else {
 		// rkj: this guy gets the address, and we then reset it to memlfs
@@ -711,23 +714,14 @@ genfs_getpages_read(struct vnode *vp, struct vm_page **pgs, int npages,
 		    "bp %p offset 0x%x bcount 0x%x blkno 0x%x",
 		    bp, offset, bp->b_bcount, bp->b_blkno);
 
-		//assert(offset == startoffset && iobytes == bytes);
-
-		if (offset == startoffset && iobytes == bytes) {
-		} else {
-			printf("vp %p offset 0x%lx startoffset 0x%lx iobytes %ld bytes %ld npages %d\n",
-			    vp, offset, startoffset, iobytes, bytes, npages);
-		}
-
-		if (vp->v_tag == VT_LFS) {
+		if (do_memlfs) {
 			assert(devvp->v_tag == VT_RUMP);
-			for (i = 0; i < npages; i++) {
-				pgs[i]->uanon = (void *)(0x100000000000 + bp->b_blkno * 512ULL + i*4096ULL);
-				//pgs[i]->uanon = (void *)(0x100000000000 + bp->b_blkno * 512ULL + (unsigned long long)i);
-				//pgs[i]->uanon = (void *)(0x100000000000 + (offset - startoffset) + bp->b_blkno * 512ULL + (unsigned long long)i);
-				//printf("pg->uanon = %p = %lu (+%d)\n", pgs[i]->uanon, bp->b_blkno, i);
+			for (i = 0; i < (iobytes / 4096); i++) {
+				pgs[i + (offset / 0x1000)]->uanon = (void *)(0x100000000000 + bp->b_blkno * 512ULL + i * 0x1000ULL);
 			}
 			SET(bp->b_oflags, BO_DONE);
+			//bp->b_iodone(iobytes, 0);
+			//biodone(bp);
 		} else {
 			VOP_STRATEGY(devvp, bp);
 		}
@@ -744,12 +738,16 @@ loopdone:
 		}
 		return 0;
 	}
-	if (bp != NULL) {
-		error = biowait(mbp);
+	if (do_memlfs) {
+		error = 0;
+	} else {
+		if (bp != NULL) {
+			error = biowait(mbp);
+		}
 	}
 
 	/* Remove the mapping (make KVA available as soon as possible) */
-	if (vp->v_tag == VT_LFS)
+	if (do_memlfs)
 		kmem_free((void*)kva, npages * PAGE_SIZE);
 	else
 		uvm_pagermapout(kva, npages);
